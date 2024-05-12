@@ -17,6 +17,7 @@
 
 namespace OpenEMR\Billing;
 
+use OpenEMR\Billing\BillingProcessor\BillingClaimBatchControlNumber;
 use OpenEMR\Billing\Claim;
 
 class X125010837P
@@ -678,8 +679,11 @@ class X125010837P
             "*" . "Y" .
             "*" . ($claim->billingFacilityAssignment() ? 'A' : 'C') .
             "*" . ($claim->billingFacilityAssignment() ? 'Y' : 'N') .
-            "*" . "Y" .
-            "~\n";
+            "*" . "Y" . "*" . "P"; // added patient signature source code CLM10
+        if ($claim->isRelatedEmployment()) {
+            $out .= "*" . "EM";
+        }
+        $out .= "~\n";
 
         // above is for historical use of encounter onset date, now in misc_billing_options
         // Segment DTP*431 (Onset of Current Symptoms or Illness)
@@ -764,8 +768,24 @@ class X125010837P
         // Segments DTP (Assumed and Relinquished Care Dates) omitted.
         // Segment DTP*444 (Property and Casualty Date of First Contact) omitted.
         // Segment DTP*050 (Repricer Received Date) omitted.
-        // Segment PWK (Claim Supplemental Information) omitted.
         // Segment CN1 (Contract Information) omitted.
+
+        /* Segment PWK for medical attachments
+         * TODO: implement medical attachments :)
+         * Hardcode OZ, support data for claim, PWK01 report type code
+         * Hardcode EL, electronic, PWK02 report transmission code
+         * Hardcode AC, attachment control number
+         * Billing claim batch control number 9 digits for PWK06
+         */
+        if ($claim->isRelatedEmployment()) {
+            $out .= "PWK" .
+                "*" . "OZ" .
+                "*" . "EL" .
+                "*" . "*" .
+                "*" . "AC" .
+                "*" . BillingClaimBatchControlNumber::getIsa13() .
+                "~";
+        }
 
         $patientpaid = $claim->patientPaidAmount();
         if ($patientpaid != 0) {
@@ -966,8 +986,9 @@ class X125010837P
         }
         // End of Loop 2310B
 
-        // Loop 2310C is omitted in the case of home visits (POS=12).
-        if ($claim->facilityPOS() != 12 && ($claim->facilityNPI() != $claim->billingFacilityNPI())) {
+        // Loop 2310C is omitted in the case of home visits (POS=12)
+        // and when the service facility is the billing facility
+        if ($claim->facilityPOS() != 12 && ($claim->billing_facility['id'] != $claim->facility['id'])) {
             ++$edicount;
             $out .= "NM1" .       // Loop 2310C Service Location
                 "*" . "77" .
@@ -1488,7 +1509,22 @@ class X125010837P
             // Segment NM1 (Loop 2420D Supervising Provider Name) omitted.
             // Segment REF (Loop 2420D Supervising Provider Secondary Identification) omitted.
 
-            // Loop 2420E, Ordering Provider omitted.
+            // Loop 2420E, Ordering Provider
+            if ($claim->orderer ?? null) {
+                ++$edicount;
+                $out .= "NM1" .
+                    "*" . "DK" .
+                    "*" . "1" .
+                    "*" .  $claim->ordererLastName() . '*' . $claim->ordererFirstName() .
+                    "*" .
+                    "*" .
+                    "*" .
+                    "*" . "XX" .
+                    "*" . $claim->ordererNPI() . "~\n";
+                $out .= "N3" . "*" . $claim->ordererStreet() . "~\n";
+                $out .= "N4" . "*" . $claim->ordererCity() . "*" .
+                    $claim->ordererState() . "*" . $claim->ordererZip() . "~\n";
+            }
 
             // Segment NM1 (Referring Provider Name) omitted.
             // Segment REF (Referring Provider Secondary Identification) omitted.

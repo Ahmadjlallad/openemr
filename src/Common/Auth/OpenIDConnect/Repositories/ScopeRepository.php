@@ -423,6 +423,7 @@ class ScopeRepository implements ScopeRepositoryInterface
             "user/RelatedPerson.write",
             "user/Schedule.read",
             "user/ServiceRequest.read",
+            "user/ValueSet.read",
         ];
 
         if ($this->restConfig->areSystemScopesEnabled()) {
@@ -482,6 +483,7 @@ class ScopeRepository implements ScopeRepositoryInterface
 //            "system/RelatedPerson.write",
             "system/Schedule.read",
             "system/ServiceRequest.read",
+            "system/ValueSet.read",
         ];
     }
 
@@ -1007,6 +1009,9 @@ class ScopeRepository implements ScopeRepositoryInterface
                 break;
             case 'Provenance':
                 $description .= xl("provenance information (including person(s) responsible for the information, author organizations, and transmitter organizations)");
+                break;
+            case 'ValueSet':
+                $description .= xl("value set records");
                 break;
             default:
                 $description .= xl("medical records for this resource type");

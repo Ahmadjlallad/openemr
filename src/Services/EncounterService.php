@@ -195,6 +195,7 @@ class EncounterService extends BaseService
                        fe.referral_source,
                        fe.billing_facility,
                        fe.external_id,
+                       fe.last_update,
                        fe.pos_code,
                        fe.class_code,
                        class.notes as class_title,
@@ -214,6 +215,7 @@ class EncounterService extends BaseService
 
                        fe.provider_id,
                        fe.referring_provider_id,
+                       fe.ordering_provider_id,
                        providers.provider_uuid,
                        providers.provider_username,
                        referrers.referrer_uuid,
@@ -247,7 +249,9 @@ class EncounterService extends BaseService
                                facility_id,
                                discharge_disposition,
                                pid as encounter_pid,
-                               referring_provider_id
+                               referring_provider_id,
+                               ordering_provider_id,
+                               last_update
                            FROM form_encounter
                        ) fe
                        LEFT JOIN openemr_postcalendar_categories as opc
@@ -709,6 +713,22 @@ class EncounterService extends BaseService
     }
 
     /**
+     * Returns the ordering provider for the encounter matching the patient and encounter identifier.
+     *
+     * @param  $pid          The legacy identifier of particular patient
+     * @param  $encounter_id The identifier of a particular encounter
+     * @return string        ordering provider of first row of encounter data (it's an id from the users table)
+     */
+    public function getOrderingProviderID($pid, $encounter_id)
+    {
+        $encounterResult = $this->search(['pid' => $pid, 'eid' => $encounter_id], $options = ['limit' => '1']);
+        if ($encounterResult->hasData()) {
+            return $encounterResult->getData()[0]['ordering_provider_id'] ?? '';
+        }
+        return [];
+    }
+
+    /**
      * Return an array of encounters within a date range
      *
      * @param  $start_date  Any encounter starting on this date
@@ -724,5 +744,18 @@ class EncounterService extends BaseService
             return $result;
         }
         return [];
+    }
+
+    /**
+     * Returns the default POS code that is set in the facility table.
+     *
+     * @param $facility_id
+     * @return mixed
+     */
+    public function getPosCode($facility_id)
+    {
+        $sql = "SELECT pos_code FROM facility WHERE id = ?";
+        $result = sqlQuery($sql, [$facility_id]);
+        return $result['pos_code'];
     }
 }

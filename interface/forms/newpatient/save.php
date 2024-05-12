@@ -40,7 +40,7 @@ if ($_POST['mode'] == 'new' && ($GLOBALS['enc_service_date'] == 'hide_both' || $
 } else {
     $date = isset($_POST['form_date']) ? DateTimeToYYYYMMDDHHMMSS($_POST['form_date']) : null;
 }
-
+$defaultPosCode = $encounterService->getPosCode($_POST['facility_id']);
 $onset_date = isset($_POST['form_onset_date']) ? DateTimeToYYYYMMDDHHMMSS($_POST['form_onset_date']) : null;
 $sensitivity = $_POST['form_sensitivity'] ?? null;
 $pc_catid = $_POST['pc_catid'] ?? null;
@@ -50,13 +50,14 @@ $reason = $_POST['reason'] ?? null;
 $mode = $_POST['mode'] ?? null;
 $referral_source = $_POST['form_referral_source'] ?? null;
 $class_code = $_POST['class_code'] ?? '';
-$pos_code = $_POST['pos_code'] ?? null;
+$pos_code = (empty($_POST['pos_code'])) ? $defaultPosCode : $_POST['pos_code'];
 $in_collection = $_POST['in_collection'] ?? null;
 $parent_enc_id = $_POST['parent_enc_id'] ?? null;
 $encounter_provider = $_POST['provider_id'] ?? null;
 $referring_provider_id = $_POST['referring_provider_id'] ?? null;
 //save therapy group if exist in external_id column
 $external_id = isset($_POST['form_gid']) ? $_POST['form_gid'] : '';
+$ordering_provider_id = $_POST['ordering_provider_id'] ?? null;
 
 $discharge_disposition = $_POST['discharge_disposition'] ?? null;
 $discharge_disposition = $discharge_disposition != '_blank' ? $discharge_disposition : null;
@@ -113,6 +114,7 @@ if ($mode == 'new') {
         'encounter_type_code' => $encounter_type_code,
         'encounter_type_description' => $encounter_type_description,
         'in_collection' => $in_collection,
+        'ordering_provider_id' => $ordering_provider_id,
     ];
 
     $col_string = implode(" = ?, ", array_keys($data)) . " = ?";
@@ -153,6 +155,7 @@ if ($mode == 'new') {
         $encounter_type_code,
         $encounter_type_description,
         $in_collection,
+        $ordering_provider_id,
         $id
     );
     $col_string = implode(" = ?, ", [
@@ -171,7 +174,8 @@ if ($mode == 'new') {
         'referring_provider_id',
         'encounter_type_code',
         'encounter_type_description',
-        'in_collection'
+        'in_collection',
+        'ordering_provider_id',
     ]) . " =?";
     sqlStatement("UPDATE form_encounter SET $datepart $col_string WHERE id = ?", $sqlBindArray);
 } else {

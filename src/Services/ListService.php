@@ -15,6 +15,7 @@
 namespace OpenEMR\Services;
 
 use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\Services\Search\FhirSearchWhereClauseBuilder;
 use OpenEMR\Services\Search\SearchModifier;
@@ -92,6 +93,20 @@ class ListService extends BaseService
         }
 
         return $processingResult;
+    }
+
+    public function getListOptionsForLists($lists)
+    {
+        $sql = "SELECT * FROM list_options WHERE list_id IN (" . str_repeat('?,', count($lists) - 1) . "?) "
+            . " ORDER BY list_id, seq";
+        $records = QueryUtils::fetchRecords($sql, $lists, false);
+        return $records;
+    }
+
+    public function getListIds()
+    {
+        $sql = "SELECT DISTINCT list_id FROM list_options ORDER BY list_id";
+        return QueryUtils::fetchTableColumn($sql, 'list_id', []);
     }
 
     public function getOptionsByListName($list_name, $search = array())

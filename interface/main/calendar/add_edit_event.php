@@ -69,7 +69,7 @@ if (!AclMain::aclCheckCore('patients', 'appt', '', array('write','wsome'))) {
 $eid           = $_GET['eid'] ?? null; // only for existing events
 $date          = $_GET['date'] ?? null;        // this and below only for new events
 $userid        = $_GET['userid'] ?? null;
-$default_catid = !empty($_GET['catid']) ? $_GET['catid'] : '5';
+$default_catid = !empty($_GET['catid']) ? $_GET['catid'] : (!empty($GLOBALS['default_visit_category'] ?? '') ? $GLOBALS['default_visit_category'] : '5');
 
 // form logic fails if not set to boolean
 if (isset($_GET['group'])) {
@@ -942,7 +942,7 @@ if ($groupid) {
 <script>
 <?php require $GLOBALS['srcdir'] . "/formatting_DateToYYYYMMDD_js.js.php" ?>
 
- var mypcc = '<?php echo $GLOBALS['phone_country_code'] ?>';
+ var mypcc = <?php echo js_escape($GLOBALS['phone_country_code']); ?>;
 
  var durations = new Array();
 <?php

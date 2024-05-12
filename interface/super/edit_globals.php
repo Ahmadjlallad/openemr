@@ -13,7 +13,7 @@
  * @copyright Copyright (c) 2010 Rod Roark <rod@sunsetsystems.com>
  * @copyright Copyright (c) 2016-2019 Brady Miller <brady.g.miller@gmail.com>
  * @copyright Copyright (c) 2019 Ranganath Pathak <pathak@scrs1.org>
- * @copyright Copyright (c) 2020 Jerry Padgett <sjpadgett@gmail.com>
+ * @copyright Copyright (c) 2020-2024 Jerry Padgett <sjpadgett@gmail.com>
  * @copyright Copyright (c) 2022 Discover and Change <snielson@discoverandchange.com>
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
  */
@@ -29,7 +29,6 @@ use OpenEMR\Common\Crypto\CryptoGen;
 use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Logging\EventAuditLogger;
 use OpenEMR\Common\Twig\TwigContainer;
-use OpenEMR\Common\Logging\SystemLogger;
 use OpenEMR\Core\Header;
 use OpenEMR\FHIR\Config\ServerConfig;
 use OpenEMR\OeUI\OemrUI;
@@ -142,8 +141,9 @@ function checkBackgroundServices()
      * Setup background services for Weno when it is enabled
      * this is to sync the prescription logs
      */
-    $wenoservices = $GLOBALS['weno_rx_enable'] == 1 ? '1' : '0';
-    updateBackgroundService('WenoExchange', $wenoservices, 1);
+    $wenoservices = ($GLOBALS['weno_rx_enable'] ?? '') == 1 ? '1' : '0';
+    updateBackgroundService('WenoExchange', $wenoservices, 60);
+    updateBackgroundService('WenoExchangePharmacies', $wenoservices, 1440);
 }
 ?>
 <!DOCTYPE html>
@@ -340,7 +340,7 @@ if (array_key_exists('form_save', $_POST) && $_POST['form_save'] && !$userMode) 
 
 $title = ($userMode) ? xlt("User Settings") : xlt("Configuration");
 ?>
-<title><?php  echo $title; ?></title>
+<title><?php echo $title; ?></title>
 <?php Header::setupHeader(['common','jscolor']); ?>
 
 <style>
@@ -387,14 +387,14 @@ $apiUrl = $serverConfig->getInternalBaseApiUrl();
     echo 'style="min-width: 700px;"';
       } ?>>
 
-    <div id="container_div" class="<?php echo $oemr_ui->oeContainer();?>">
+    <div id="container_div" class="<?php echo $oemr_ui->oeContainer();?> mt-2">
         <div class="row">
-             <div class="col-sm-12">
+             <div class="col-sm-12 px-0 my-2">
                 <?php echo $oemr_ui->pageHeading() . "\r\n"; ?>
             </div>
         </div>
         <div class="row">
-            <div class="col-sm-12 pl-0">
+            <div class="col-sm-12 px-0">
                 <?php if ($userMode) { ?>
                 <form method='post' name='theform' id='theform' class='form-horizontal' action='edit_globals.php?mode=user' onsubmit='return top.restoreSession()'>
                 <?php } else { ?>
@@ -405,7 +405,7 @@ $apiUrl = $serverConfig->getInternalBaseApiUrl();
                         <div class="btn-group oe-margin-b-10">
                             <button type='submit' class='btn btn-primary btn-save oe-pull-toward' name='form_save' value='<?php echo xla('Save'); ?>'><?php echo xlt('Save'); ?></button>
                         </div>
-                        <div class="input-group col-sm-4 oe-pull-away">
+                        <div class="input-group col-sm-4 oe-pull-away p-0">
                         <?php // mdsupport - Optional server based searching mechanism for large number of fields on this screen.
                         if (!$userMode) {
                             $placeholder = xla('Search configuration');
@@ -642,6 +642,39 @@ $apiUrl = $serverConfig->getInternalBaseApiUrl();
                                                     }
                                                     echo ">";
                                                     echo xlt($row['lang_description']);
+                                                    echo "</option>\n";
+                                                }
+                                                echo "  </select>\n";
+                                            } elseif ($fldtype == GlobalSetting::DATA_TYPE_MULTI_DASHBOARD_CARDS) {
+                                                $hiddenList = [];
+                                                $ret = sqlStatement("SELECT gl_value FROM `globals` WHERE `gl_name` = 'hide_dashboard_cards'");
+                                                while ($row = sqlFetchArray($ret)) {
+                                                    $hiddenList[] = $row['gl_value'];
+                                                }
+                                                // The list of cards to hide. For now add to array new cards.
+                                                $res = array(
+                                                    ['card_abrev' => '', 'card_name' => xlt('None or Reset')],
+                                                    ['card_abrev' => attr('card_allergies'), 'card_name' => xlt('Allergies')],
+                                                    ['card_abrev' => attr('card_amendments'), 'card_name' => xlt('Amendments')],
+                                                    ['card_abrev' => attr('card_disclosure'), 'card_name' => xlt('Disclosures')],
+                                                    ['card_abrev' => attr('card_insurance'), 'card_name' => xlt('Insurance')],
+                                                    ['card_abrev' => attr('card_lab'), 'card_name' => xlt('Labs')],
+                                                    ['card_abrev' => attr('card_medicalproblems'), 'card_name' => xlt('Medical Problems')],
+                                                    ['card_abrev' => attr('card_medication'), 'card_name' => xlt('Medications')],
+                                                    ['card_abrev' => 'card_prescriptions', 'card_name' => 'Prescriptions'], // For now don't hide because can be disabled as feature.
+                                                    ['card_abrev' => attr('card_vitals'), 'card_name' => xlt('Vitals')]
+                                                );
+                                                echo "  <select multiple class='form-control' name='form_{$i}[]' id='form_{$i}[]' size='10'>\n";
+                                                foreach ($res as $row) {
+                                                    echo "   <option value='" . attr($row['card_abrev']) . "'";
+                                                    foreach ($glarr as $glrow) {
+                                                        if ($glrow['gl_value'] == $row['card_abrev']) {
+                                                            echo " selected";
+                                                            break;
+                                                        }
+                                                    }
+                                                    echo ">";
+                                                    echo xlt($row['card_name']);
                                                     echo "</option>\n";
                                                 }
                                                 echo "  </select>\n";

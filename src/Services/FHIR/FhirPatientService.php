@@ -138,11 +138,11 @@ class FhirPatientService extends FhirServiceBase implements IFhirExportableResou
                 ['state', 'contact_address_state']
             ),
 
-            'email' => new FhirSearchParameterDefinition('email', SearchFieldType::TOKEN, ['email']),
+            'email' => new FhirSearchParameterDefinition('email', SearchFieldType::TOKEN, ['email','email_direct']),
             'family' => new FhirSearchParameterDefinition('family', SearchFieldType::STRING, ['lname']),
             'given' => new FhirSearchParameterDefinition('given', SearchFieldType::STRING, ['fname', 'mname']),
             'phone' => new FhirSearchParameterDefinition('phone', SearchFieldType::TOKEN, ['phone_home', 'phone_biz', 'phone_cell']),
-            'telecom' => new FhirSearchParameterDefinition('telecom', SearchFieldType::TOKEN, ['email', 'phone_home', 'phone_biz', 'phone_cell']),
+            'telecom' => new FhirSearchParameterDefinition('telecom', SearchFieldType::TOKEN, ['email','email_direct', 'phone_home', 'phone_biz', 'phone_cell']),
             '_lastUpdated' => new FhirSearchParameterDefinition('_lastUpdated', SearchFieldType::DATETIME, ['date']),
             'generalPractitioner' => new FhirSearchParameterDefinition('generalPractitioner', SearchFieldType::REFERENCE, ['provider_uuid'])
         ];
@@ -172,6 +172,7 @@ class FhirPatientService extends FhirServiceBase implements IFhirExportableResou
         $id = new FHIRId();
         $id->setValue($dataRecord['uuid']);
         $patientResource->setId($id);
+        $patientResource->setDeceasedBoolean($dataRecord[ 'deceasedDate' ] != null);
 
         $this->parseOpenEMRPatientSummaryText($patientResource, $dataRecord);
         $this->parseOpenEMRPatientName($patientResource, $dataRecord);
@@ -307,6 +308,13 @@ class FhirPatientService extends FhirServiceBase implements IFhirExportableResou
         if (!empty($dataRecord['email'])) {
             $patientResource->addTelecom($this->createContactPoint('email', $dataRecord['email'], 'home'));
         }
+        if (!empty($dataRecord['email_direct'])) {
+            $patientResource->addTelecom($this->createContactPoint('email', $dataRecord['email_direct'], 'mobile'));
+            // "mobile" per spec:
+            //    "A telecommunication device that moves and stays with its owner.
+            //    May have characteristics of all other use codes, suitable for urgent matters,
+            //    not the first choice for routine business."
+        }
     }
 
     private function parseOpenEMRGenderAndBirthSex(FHIRPatient $patientResource, $sex)
@@ -319,7 +327,7 @@ class FhirPatientService extends FhirServiceBase implements IFhirExportableResou
         if ($genderValue !== 'Unknown') {
             if ($genderValue === 'Male') {
                 $birthSex = 'M';
-            } else if ($genderValue === 'Female') {
+            } elseif ($genderValue === 'Female') {
                 $birthSex = 'F';
             }
         }
@@ -348,7 +356,7 @@ class FhirPatientService extends FhirServiceBase implements IFhirExportableResou
                 // @see https://www.hl7.org/fhir/us/core/ValueSet-omb-race-category.html
                 $code = "ASKU";
                 $display = xlt("Asked but no answer");
-            } else if (!empty($record)) {
+            } elseif (!empty($record)) {
                 $code = $record['notes'];
                 $display = $record['title'];
                 $system = FhirCodeSystemConstants::OID_RACE_AND_ETHNICITY;
@@ -540,7 +548,7 @@ class FhirPatientService extends FhirServiceBase implements IFhirExportableResou
                 $addressPeriod = UtilsService::getPeriodTimestamps($address->getPeriod());
                 if (empty($addressPeriod['end'])) {
                     $activeAddress = $address;
-                } else if (!empty($mostRecentPeriods['end']) && $addressPeriod['end'] > $mostRecentPeriods['end']) {
+                } elseif (!empty($mostRecentPeriods['end']) && $addressPeriod['end'] > $mostRecentPeriods['end']) {
                     // if our current period is more recent than our most recent address we want to grab that one
                     $mostRecentPeriods = $addressPeriod;
                     $activeAddress = $address;
@@ -562,8 +570,14 @@ class FhirPatientService extends FhirServiceBase implements IFhirExportableResou
                 $systemValue = (string)$contactPoint->getSystem() ?? "contact_other";
                 $contactValue = (string)$contactPoint->getValue();
                 if ($systemValue === 'email') {
-                    $data[$systemValue] = (string)$contactValue;
-                } else if ($systemValue == "phone") {
+                    $use = (string)$contactPoint->getUse() ?? "home";
+                    $useMapping = ['mobile' => 'email_direct'];
+                    if (isset($useMapping[$use])) {
+                        $data[$useMapping[$use]] = $contactValue;
+                    } else {
+                        $data[$systemValue] = (string)$contactValue;
+                    }
+                } elseif ($systemValue == "phone") {
                     $use = (string)$contactPoint->getUse() ?? "work";
                     $useMapping = ['mobile' => 'phone_cell', 'home' => 'phone_home', 'work' => 'phone_biz'];
                     if (isset($useMapping[$use])) {

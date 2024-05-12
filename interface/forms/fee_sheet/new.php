@@ -209,9 +209,10 @@ function echoServiceLines()
         } else { // not billed
             if ($institutional) {
                 if ($codetype != 'COPAY' && $codetype != 'ICD10') {
-                    echo "  <td class='billcell'><select type='text' class='revcode form-control form-control-sm' name='bill[" . attr($lino) . "][revenue_code]' " .
-                        "title='" . xla("Revenue Code for this item. Type to search") . "' " .
-                        "value='" . attr($revenue_code) . "' size='4'></select></td>\n";
+                    echo "  <td class='billcell'>" .
+                        "<input type='text' class='revcode form-control form-control-sm' name='bill[" . attr($lino) . "][revenue_code]' " .
+                        "title='" . xla("Revenue Code for this item. Type to search or double click for list") . "' " .
+                        "value='" . attr($revenue_code) . "' size='4'></td>\n";
                 } else {
                     echo "  <td class='billcell'>&nbsp;</td>\n";
                 }
@@ -220,7 +221,7 @@ function echoServiceLines()
                 if ($codetype != 'COPAY' && (!empty($code_types[$codetype]['mod']) || $modifier)) {
                     echo "  <td class='billcell'><input type='text' class='form-control form-control-sm' name='bill[" . attr($lino) . "][mod]' " .
                        "title='" . xla("Multiple modifiers can be separated by colons or spaces, maximum of 4 (M1:M2:M3:M4)") . "' " .
-                       "value='" . attr($modifier) . "' size='" . attr($code_types[$codetype]['mod']) . " 'onkeyup='policykeyup(this)' /></td>\n";
+                       "value='" . attr($modifier) . "' size='" . attr($code_types[$codetype]['mod']) . "' onkeyup='policykeyup(this)' onblur='formatModifier(this)' /></td>\n";
                 } else {
                     echo "  <td class='billcell'>&nbsp;</td>\n";
                 }
@@ -635,7 +636,7 @@ $billresult = BillingUtilities::getBillingByEncounter($fs->pid, $fs->encounter, 
 ?>
 <html>
 <head>
-<?php Header::setupHeader(['common', 'knockout', 'select2']);?>
+<?php Header::setupHeader(['common', 'knockout', 'jquery-ui', 'jquery-ui-base']);?>
 <script>
 var mypcc = <?php echo js_escape($GLOBALS['phone_country_code']); ?>;
 var diags = new Array();
@@ -670,7 +671,12 @@ if (!empty($_POST['newcodes'])) {
 
         $arrcode = explode('|', $codestring);
         if (strpos($arrcode[1], ':') !== false) {
-            list($code, $modifier) = explode(":", $arrcode[1]);
+            $tmp = explode(':', $arrcode[1]);
+            $code = $tmp[0] ?? '';
+            $modifier = $tmp[1] ?? '';
+            $modifier .= ($tmp[2] ?? '') ? ":" . $tmp[2] : '';
+            $modifier .= ($tmp[3] ?? '') ? ":" . $tmp[3] : '';
+            $modifier .= ($tmp[4] ?? '') ? ":" . $tmp[4] : '';
         } else {
             $code = $arrcode[1];
             $modifier = '';
@@ -680,31 +686,24 @@ if (!empty($_POST['newcodes'])) {
 }
 ?>
 function reinitForm(){
-    $(".revcode").select2({
-        ajax: {
-            url: "<?php echo $GLOBALS['web_root'] ?>/interface/billing/ub04_helpers.php",
-            dataType: 'json',
-            data: function(params) {
-                return {
-                  code_group: "revenue_code",
-                  term: params.term
-                };
-            },
-            processResults: function(data) {
-                return  {
-                    results: $.map(data, function(item, index) {
-                        return {
-                            text: item.label,
-                            id: index,
-                            value: item.value
-                        }
-                    })
-                };
-                return x;
-            },
-            cache: true
+    var cache = {};
+    $( ".revcode" ).autocomplete({
+        minLength: 1,
+        source: function( request, response ) {
+            var term = request.term;
+            request.code_group = "revenue_code";
+            if ( term in cache ) {
+                response( cache[ term ] );
+                return;
+            }
+            $.getJSON( "<?php echo $GLOBALS['web_root'] ?>/interface/billing/ub04_helpers.php", request, function( data, status, xhr ) {
+                cache[ term ] = data;
+                response( data );
+            })
         }
-    })
+    }).dblclick(function(event) {
+        $(this).autocomplete('search'," ");
+    });
 }
 
 // This is invoked by <select onchange> for the various dropdowns,
@@ -904,6 +903,38 @@ function defaultPriceLevelChanged(sel) {
     pricelevel_changed(elem);
   }
  }
+}
+
+function formatModifier(e) {
+    let mods = e.value;
+    mods = mods.substring(0, 11).trim();
+    let modArray = mods.includes(':') ? mods.split(":") : mods.split(" ");
+    let cntr = 0;
+    modArray.forEach( function(m) {
+        let l = m.length;
+        if (l) {
+            cntr++;
+            if (l !== 2) {
+               alert("Removing invalid modifier " + m);
+               modArray.pop();
+            }
+        } else {
+            modArray.pop();
+        }
+    });
+    
+    let modString = modArray.join(":");
+    e.value = checkLastChar(modString);
+}
+
+function checkLastChar(s) {
+    let last_char = s.slice(-1);
+    if (last_char === ':') {
+        s = s.substring(0, s.length - 1);
+        return checkLastChar(s);
+    } else {
+        return s;
+    }
 }
 
 </script>
@@ -1275,7 +1306,7 @@ $oemr_ui = new OemrUI($arrOeUiSettings);
                                         // Also preserve other items from the form, if present.
                                         if (!empty($bline['id']) && empty($iter["billed"])) {
                                             if ($institutional) {
-                                                //$revenue_code   = trim($bline['revenue_code']);
+                                                $revenue_code   = trim($bline['revenue_code']);
                                             }
                                             $modifier   = trim($bline['mod'] ?? '');
                                             $units = intval(trim($bline['units'] ?? ''));
@@ -1566,7 +1597,12 @@ $oemr_ui = new OemrUI($arrOeUiSettings);
                                                 );
                                             } else {
                                                 if (strpos($newcode, ':') !== false) {
-                                                    list($code, $modifier) = explode(":", $newcode);
+                                                    $tmp = explode(':', $arrcode[1]);
+                                                    $code = $tmp[0] ?? '';
+                                                    $modifier = $tmp[1] ?? '';
+                                                    $modifier .= ($tmp[2] ?? '') ? ":" . $tmp[2] : '';
+                                                    $modifier .= ($tmp[3] ?? '') ? ":" . $tmp[3] : '';
+                                                    $modifier .= ($tmp[4] ?? '') ? ":" . $tmp[4] : '';
                                                 } else {
                                                     $code = $newcode;
                                                     $modifier = '';

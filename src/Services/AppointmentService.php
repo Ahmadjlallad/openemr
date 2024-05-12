@@ -81,7 +81,7 @@ class AppointmentService extends BaseService
 
     public function getUuidFields(): array
     {
-        return ['puuid', 'pce_aid_uuid', 'pc_uuid'];
+        return ['puuid', 'pce_aid_uuid', 'pc_uuid', 'facility_uuid', 'billing_location_uuid' ];
     }
 
     public function validate($appointment)
@@ -132,13 +132,16 @@ class AppointmentService extends BaseService
                        pce.pc_eventDate,
                        pce.pc_startTime,
                        pce.pc_endTime,
+                       pce.pc_time,
               	       pce.pc_facility,
                        pce.pc_billing_location,
                        pce.pc_catid,
                        pce.pc_pid,
                        pce.pc_duration,
                        f1.name as facility_name,
-                       f2.name as billing_location_name
+                       f1_map.uuid as facility_uuid,
+                       f2.name as billing_location_name,
+                       f2_map.uuid as billing_location_uuid
                        FROM (
                              SELECT
                                pc_eid,
@@ -149,6 +152,7 @@ class AppointmentService extends BaseService
                                pc_startTime,
                                pc_duration,
                                pc_endTime,
+                               pc_time,
                                pc_facility,
                                pc_billing_location,
                                pc_catid,
@@ -157,7 +161,9 @@ class AppointmentService extends BaseService
                                  openemr_postcalendar_events
                        ) pce
                        LEFT JOIN facility as f1 ON pce.pc_facility = f1.id
+                       LEFT JOIN uuid_mapping as f1_map ON f1_map.target_uuid=f1.uuid AND f1_map.resource='Location'
                        LEFT JOIN facility as f2 ON pce.pc_billing_location = f2.id
+                       LEFT JOIN uuid_mapping as f2_map ON f2_map.target_uuid=f2.uuid AND f2_map.resource='Location'
                        LEFT JOIN (
                            select uuid AS puuid
                            ,fname
@@ -201,15 +207,20 @@ class AppointmentService extends BaseService
                        pce.pc_eventDate,
                        pce.pc_startTime,
                        pce.pc_endTime,
+                       pce.pc_time,
               	       pce.pc_facility,
                        pce.pc_billing_location,
                        pce.pc_catid,
                        pce.pc_pid,
                        f1.name as facility_name,
-                       f2.name as billing_location_name
+                       f1_map.uuid as facility_uuid,
+                       f2.name as billing_location_name,
+                       f2_map.uuid as billing_location_uuid
                        FROM openemr_postcalendar_events as pce
                        LEFT JOIN facility as f1 ON pce.pc_facility = f1.id
+                       LEFT JOIN uuid_mapping as f1_map ON f1_map.target_uuid=f1.uuid AND f1_map.resource='Location'
                        LEFT JOIN facility as f2 ON pce.pc_billing_location = f2.id
+                       LEFT JOIN uuid_mapping as f2_map ON f2_map.target_uuid=f2.uuid AND f2_map.resource='Location'
                        LEFT JOIN patient_data as pd ON pd.pid = pce.pc_pid
                        LEFT JOIN users as providers ON pce.pc_aid = providers.id";
 
@@ -244,6 +255,7 @@ class AppointmentService extends BaseService
                        pce.pc_eventDate,
                        pce.pc_startTime,
                        pce.pc_endTime,
+                       pce.pc_time,
                        pce.pc_duration,
               	       pce.pc_facility,
                        pce.pc_billing_location,
@@ -251,11 +263,16 @@ class AppointmentService extends BaseService
                        pce.pc_room,
                        pce.pc_pid,
                        pce.pc_hometext,
+                       pce.pc_title,
                        f1.name as facility_name,
-                       f2.name as billing_location_name
+                       f1_map.uuid as facility_uuid,
+                       f2.name as billing_location_name,
+                       f2_map.uuid as billing_location_uuid
                        FROM openemr_postcalendar_events as pce
                        LEFT JOIN facility as f1 ON pce.pc_facility = f1.id
+                       LEFT JOIN uuid_mapping as f1_map ON f1_map.target_uuid=f1.uuid AND f1_map.resource='Location'
                        LEFT JOIN facility as f2 ON pce.pc_billing_location = f2.id
+                       LEFT JOIN uuid_mapping as f2_map ON f2_map.target_uuid=f2.uuid AND f2_map.resource='Location'
                        LEFT JOIN patient_data as pd ON pd.pid = pce.pc_pid
                        LEFT JOIN users as providers ON pce.pc_aid = providers.id
                        WHERE pce.pc_eid = ?";
@@ -272,9 +289,14 @@ class AppointmentService extends BaseService
 
     public function insert($pid, $data)
     {
-        $startTime = date("H:i:s", strtotime($data['pc_startTime']));
-        // TODO: Why are we adding strings with numbers?  How is this even working
-        $endTime = $startTime . $data['pc_duration'];
+        $startUnixTime = strtotime($data['pc_startTime']);
+        $startTime = date('H:i:s', $startUnixTime);
+
+        // DateInterval _needs_ a valid constructor, so set it to 0s then update.
+        $endTimeInterval = new \DateInterval('PT0S');
+        $endTimeInterval->s = $data['pc_duration'];
+
+        $endTime = (new \DateTime())->setTimestamp($startUnixTime)->add($endTimeInterval);
         $uuid = (new UuidRegistry())->createUuid();
 
         $sql  = " INSERT INTO openemr_postcalendar_events SET";
@@ -307,7 +329,7 @@ class AppointmentService extends BaseService
                 $data["pc_eventDate"],
                 $data['pc_apptstatus'],
                 $startTime,
-                $endTime,
+                $endTime->format('H:i:s'),
                 $data["pc_facility"],
                 $data["pc_billing_location"],
                 $data["pc_aid"] ?? null
@@ -458,7 +480,7 @@ class AppointmentService extends BaseService
      * @param $option
      * @return bool
      */
-    public function isCheckInStatus($option)
+    public static function isCheckInStatus($option)
     {
         $row = sqlQuery("SELECT toggle_setting_1 FROM list_options WHERE " .
             "list_id = 'apptstat' AND option_id = ? AND activity = 1", array($option));
@@ -474,7 +496,7 @@ class AppointmentService extends BaseService
      * @param $option
      * @return bool
      */
-    public function isCheckOutStatus($option)
+    public static function isCheckOutStatus($option)
     {
         $row = sqlQuery("SELECT toggle_setting_2 FROM list_options WHERE " .
             "list_id = 'apptstat' AND option_id = ? AND activity = 1", array($option));

@@ -33,7 +33,7 @@ $tabTitle = $serviceType == "sms" ? xlt('SMS') : xlt('FAX');
         die("<h3>" . xlt("Not Authorised!") . "</h3>");
     }
     Header::setupHeader(['opener', 'datetime-picker']);
-    echo "<script>const pid=" . js_escape($pid) . ";const portalUrl=" . js_escape($clientApp->portalUrl) .
+    echo "<script>const pid=" . js_escape($pid) . ";const portalUrl=" . js_escape($clientApp->portalUrl ?? '') .
         ";const currentService=" . js_escape($service) . ";const serviceType=" . js_escape($serviceType) . "</script>";
     ?>
     <script type="text/javascript" src="<?php echo $GLOBALS['assets_static_relative']; ?>/dropzone/dist/dropzone.js"></script>
@@ -190,7 +190,11 @@ $tabTitle = $serviceType == "sms" ? xlt('SMS') : xlt('FAX');
                 'width=' + width / 1.75 + ', height=' + height +
                 ', top=' + top + ', left=' + left
             );
-            win.document.write("<iframe width='100%' height='100%' style='border:none;' src='" + dataUrl + "'></iframe>");
+            if (win === null) {
+                alert(xl('Please allow popups for this site'));
+            } else {
+                win.document.write("<iframe width='100%' height='100%' style='border:none;' src='" + dataUrl + "'></iframe>");
+            }
         }
 
         function viewDocument(e = '', dataUrl) {
@@ -212,7 +216,11 @@ $tabTitle = $serviceType == "sms" ? xlt('SMS') : xlt('FAX');
                 'width=' + width / 1.75 + ', height=' + height +
                 ', top=' + top + ', left=' + left
             );
-            win.document.write("<iframe width='100%' height='100%' style='border:none;' src='" + dataUrl + "'></iframe>");
+            if (win === null) {
+                alert(xl('Please allow popups for this site'));
+            } else {
+                win.document.write("<iframe width='100%' height='100%' style='border:none;' src='" + dataUrl + "'></iframe>");
+            }
         }
 
         function getDocument(e, docuri, docid, downFlag, deleteFlag = '') {
